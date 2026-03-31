@@ -1,0 +1,141 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────────────────
+// CORE ENTITIES
+// ──────────────────────────────────────
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  courses   Course[]
+  users     User[]
+}
+
+model User {
+  id             String       @id @default(cuid())
+  email          String       @unique
+  name           String?
+  role           String       @default("MANAGER") // OWNER, MANAGER, VIEWER
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+}
+
+model Course {
+  id              String           @id @default(cuid())
+  name            String
+  holes           Int              @default(18)
+  teeTimeInterval Int              @default(10)
+  openTime        String           @default("06:00")
+  closeTime       String           @default("18:00")
+  seasonStart     Int              @default(3)
+  seasonEnd       Int              @default(11)
+  timezone        String           @default("America/New_York")
+  organizationId  String
+  organization    Organization     @relation(fields: [organizationId], references: [id])
+  teeTimeRecords  TeeTimeRecord[]
+  members         Member[]
+  membershipTiers MembershipTier[]
+  imports         DataImport[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+// ──────────────────────────────────────
+// TEE SHEET DATA
+// ──────────────────────────────────────
+
+model TeeTimeRecord {
+  id            String      @id @default(cuid())
+  courseId       String
+  course         Course      @relation(fields: [courseId], references: [id])
+  date           DateTime
+  teeTime        String      // "07:30"
+  slotDateTime   DateTime    // full timestamp for queries
+  playersBooked  Int         @default(0)
+  maxPlayers     Int         @default(4)
+  status         String      @default("OPEN") // OPEN, BOOKED, CHECKED_IN, COMPLETED, NO_SHOW, CANCELLED, BLOCKED
+  playerType     String?     // MEMBER, PUBLIC, GUEST, TOURNAMENT, COMP
+  rateCharged    Float?
+  rateCategory   String?     // "weekend_prime", "twilight", etc.
+  cartRevenue    Float?
+  bookingSource  String?     // "online", "phone", "walk-in", "third_party"
+  noShow         Boolean     @default(false)
+  cancelledAt    DateTime?
+  importId       String?
+  dataImport     DataImport? @relation(fields: [importId], references: [id])
+  createdAt      DateTime    @default(now())
+
+  @@index([courseId, date])
+  @@index([courseId, slotDateTime])
+  @@index([courseId, status])
+}
+
+// ──────────────────────────────────────
+// MEMBERSHIP DATA
+// ──────────────────────────────────────
+
+model MembershipTier {
+  id                String   @id @default(cuid())
+  courseId           String
+  course             Course   @relation(fields: [courseId], references: [id])
+  name               String
+  annualDues         Float
+  monthlyDues        Float?
+  initiationFee      Float?
+  includesCart        Boolean  @default(false)
+  guestPassesPerYear Int?
+  maxMembers         Int?
+  members            Member[]
+  createdAt          DateTime @default(now())
+}
+
+model Member {
+  id             String          @id @default(cuid())
+  courseId        String
+  course          Course          @relation(fields: [courseId], references: [id])
+  tierId          String?
+  tier            MembershipTier? @relation(fields: [tierId], references: [id])
+  externalId      String?
+  name            String?
+  email           String?
+  joinDate        DateTime?
+  expirationDate  DateTime?
+  status          String          @default("ACTIVE") // ACTIVE, INACTIVE, SUSPENDED, EXPIRED
+  roundsPlayed    Int             @default(0)
+  totalSpend      Float?
+  importId        String?
+  dataImport      DataImport?     @relation(fields: [importId], references: [id])
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+// ──────────────────────────────────────
+// DATA IMPORT TRACKING
+// ──────────────────────────────────────
+
+model DataImport {
+  id             String          @id @default(cuid())
+  courseId        String
+  course          Course          @relation(fields: [courseId], references: [id])
+  type            String          // TEE_SHEET, MEMBERSHIP
+  source          String          @default("CSV_UPLOAD") // CSV_UPLOAD, LIGHTSPEED_API, MANUAL
+  fileName        String?
+  rowCount        Int?
+  errorCount      Int?
+  errors          String?         // JSON array
+  status          String          @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED, PARTIAL
+  teeTimeRecords  TeeTimeRecord[]
+  members         Member[]
+  createdAt       DateTime        @default(now())
+  completedAt     DateTime?
+}
